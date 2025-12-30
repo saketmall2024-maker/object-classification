@@ -1,114 +1,100 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Object Detection – Small Centered Boxes</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Object Detection</title>
 <style>
-  html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; width: 100%; background: black; }
-  #container { position: relative; width: 100vw; height: 100vh; }
-  video, canvas { position: absolute; top:0; left:0; width:100vw; height:100vh; object-fit:cover; }
-  #status { position:absolute; bottom:10px; left:50%; transform:translateX(-50%); color:white; background: rgba(0,0,0,0.6); padding:6px 12px; border-radius:10px; font-size:14px; font-family:Arial; z-index:10; }
+  body { margin: 0; overflow: hidden; }
+  video, canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+  #toggleCamera {
+    position: absolute; top: 10px; left: 10px; z-index: 10;
+    padding: 10px 20px; font-size: 16px;
+  }
 </style>
 </head>
-
 <body>
-<div id="container">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
-  <div id="status">Loading model…</div>
-</div>
+
+<button id="toggleCamera">Switch Camera</button>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas"></canvas>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.3.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
 <script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("canvas");
-const ctx = canvas.getContext("2d");
-const status = document.getElementById("status");
+const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let model, lastObject = '';
+let useFrontCamera = true;
 
-let model;
-let lastObjectsSpoken = new Set();
+// Initialize camera
+async function startCamera() {
+    if (video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+    }
 
-async function setupCamera() {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" }, audio: false
-  });
-  video.srcObject = stream;
-  return new Promise(resolve => video.onloadedmetadata = () => resolve());
+    const constraints = {
+        video: { facingMode: useFrontCamera ? 'user' : 'environment' },
+        audio: false
+    };
+
+    video.srcObject = await navigator.mediaDevices.getUserMedia(constraints);
 }
 
-function resizeCanvas() {
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
+// Load COCO-SSD model
+async function loadModel() {
+    model = await cocoSsd.load();
+    detectFrame();
 }
 
-function speakObjects(objects) {
-  const newObjects = objects.filter(obj => !lastObjectsSpoken.has(obj));
-  if(newObjects.length > 0){
-    newObjects.forEach(obj => {
-      const utterance = new SpeechSynthesisUtterance(obj);
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      speechSynthesis.speak(utterance);
-    });
-  }
-  lastObjectsSpoken = new Set(objects);
-}
+// Detection loop
+async function detectFrame() {
+    if (!model) return requestAnimationFrame(detectFrame);
 
-function draw(predictions) {
-  ctx.clearRect(0,0,canvas.width,canvas.height);
+    const predictions = await model.detect(video);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 
-  const currentObjects = [];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  predictions
-    .filter(p => p.score > 0.5)
-    .forEach(p => {
-      const [x, y, w, h] = p.bbox;
+    predictions.forEach(pred => {
+        // Small centered box
+        const boxWidth = pred.bbox[2] * 0.6;
+        const boxHeight = pred.bbox[3] * 0.6;
+        const x = pred.bbox[0] + (pred.bbox[2] - boxWidth)/2;
+        const y = pred.bbox[1] + (pred.bbox[3] - boxHeight)/2;
 
-      // Make the bounding box smaller and center it
-      const scale = 0.5; // 50% smaller than original
-      const boxWidth = w * scale;
-      const boxHeight = h * scale;
-      const boxX = x + (w - boxWidth)/2;
-      const boxY = y + (h - boxHeight)/2;
+        ctx.strokeStyle = 'lime';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, boxWidth, boxHeight);
 
-      ctx.strokeStyle = "#00ff00";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+        ctx.fillStyle = 'lime';
+        ctx.font = '20px Arial';
+        ctx.fillText(pred.class, x, y > 20 ? y - 5 : y + 20);
 
-      ctx.fillStyle = "#00ff00";
-      ctx.font = "18px Arial";
-      ctx.fillText(p.class, boxX, boxY > 20 ? boxY - 5 : boxY + 20);
-
-      currentObjects.push(p.class);
+        // Speak only if object changes
+        if (pred.class !== lastObject) {
+            lastObject = pred.class;
+            const utter = new SpeechSynthesisUtterance(pred.class);
+            window.speechSynthesis.speak(utter);
+        }
     });
 
-  speakObjects(currentObjects);
+    requestAnimationFrame(detectFrame);
 }
 
-async function detectLoop() {
-  resizeCanvas();
-  const predictions = await model.detect(video);
-  draw(predictions);
-  requestAnimationFrame(detectLoop);
-}
+// Toggle camera
+document.getElementById('toggleCamera').addEventListener('click', () => {
+    useFrontCamera = !useFrontCamera;
+    startCamera();
+});
 
-async function start() {
-  await setupCamera();
-  status.innerText = "Loading object detection model…";
-  model = await cocoSsd.load();
-  status.innerText = "Detecting objects";
-  detectLoop();
-}
-
-start();
+// Start
+startCamera();
+loadModel();
 </script>
+
 </body>
 </html>
-
-
-
-

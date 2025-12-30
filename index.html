@@ -2,54 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Live Object Detection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Object Detection – Full Screen</title>
 
   <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0"></script>
 
-  <!-- COCO-SSD Model -->
+  <!-- COCO-SSD -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
   <style>
-    body {
+    html, body {
       margin: 0;
-      background: #000;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
+      padding: 0;
+      background: black;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
     }
 
     #container {
       position: relative;
+      width: 100vw;
+      height: 100vh;
     }
 
-    video {
-      width: 640px;
-      height: 480px;
-      border-radius: 10px;
-    }
-
-    canvas {
+    video, canvas {
       position: absolute;
-      left: 0;
       top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+
+    #status {
+      position: absolute;
+      bottom: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: white;
+      background: rgba(0,0,0,0.6);
+      padding: 6px 12px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-family: Arial, sans-serif;
+      z-index: 10;
     }
   </style>
 </head>
-<body>
 
-<div id="container">
-  <video id="video" autoplay playsinline></video>
-  <canvas id="canvas"></canvas>
-</div>
+<body>
+  <div id="container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    <div id="status">Loading model…</div>
+  </div>
 
 <script>
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const ctx = canvas.getContext("2d");
+  const status = document.getElementById("status");
 
   let model;
+  let lastSpoken = "";
+  let lastTime = 0;
 
   async function setupCamera() {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -57,54 +75,67 @@
       audio: false
     });
     video.srcObject = stream;
-
     return new Promise(resolve => {
-      video.onloadedmetadata = () => resolve(video);
+      video.onloadedmetadata = () => resolve();
     });
   }
 
-  async function loadModel() {
-    model = await cocoSsd.load();
-    console.log("Model loaded");
-  }
-
-  function drawPrediction(prediction) {
-    const [x, y, width, height] = prediction.bbox;
-
-    ctx.strokeStyle = "lime";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, width, height);
-
-    ctx.fillStyle = "lime";
-    ctx.font = "16px Arial";
-    ctx.fillText(
-      `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
-      x,
-      y > 10 ? y - 5 : 10
-    );
-  }
-
-  async function detectObjects() {
+  function resizeCanvas() {
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
+  }
 
+  function speak(text) {
+    const now = Date.now();
+    if (text !== lastSpoken && now - lastTime > 2000) {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(utterance);
+      lastSpoken = text;
+      lastTime = now;
+    }
+  }
+
+  function draw(predictions) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    predictions
+      .filter(p => p.score > 0.5)
+      .forEach(p => {
+        const [x, y, w, h] = p.bbox;
+        const label = `${p.class} ${(p.score * 100).toFixed(0)}%`;
+
+        ctx.strokeStyle = "#00ff00";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, w, h);
+
+        ctx.fillStyle = "#00ff00";
+        ctx.font = "18px Arial";
+        ctx.fillText(label, x, y > 20 ? y - 5 : y + 20);
+
+        speak(`${p.class} detected with ${(p.score * 100).toFixed(0)} percent confidence`);
+      });
+  }
+
+  async function detectLoop() {
+    resizeCanvas();
     const predictions = await model.detect(video);
-
-    predictions.forEach(drawPrediction);
-
-    requestAnimationFrame(detectObjects);
+    draw(predictions);
+    requestAnimationFrame(detectLoop);
   }
 
   async function start() {
     await setupCamera();
-    await loadModel();
-    detectObjects();
+    status.innerText = "Loading object detection model…";
+    model = await cocoSsd.load();
+    status.innerText = "Detecting objects";
+    detectLoop();
   }
 
   start();
 </script>
-
 </body>
 </html>
+

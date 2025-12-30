@@ -66,8 +66,7 @@
   const status = document.getElementById("status");
 
   let model;
-  let lastSpoken = "";
-  let lastTime = 0;
+  let lastSpokenObject = "";
 
   async function setupCamera() {
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -85,16 +84,14 @@
     canvas.height = video.videoHeight;
   }
 
-  function speak(text) {
-    const now = Date.now();
-    if (text !== lastSpoken && now - lastTime > 2000) {
-      const utterance = new SpeechSynthesisUtterance(text);
+  function speakObject(objectName) {
+    if (objectName !== lastSpokenObject) {
+      const utterance = new SpeechSynthesisUtterance(objectName);
       utterance.rate = 1;
       utterance.pitch = 1;
       speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
-      lastSpoken = text;
-      lastTime = now;
+      lastSpokenObject = objectName;
     }
   }
 
@@ -105,17 +102,20 @@
       .filter(p => p.score > 0.5)
       .forEach(p => {
         const [x, y, w, h] = p.bbox;
-        const label = `${p.class} ${(p.score * 100).toFixed(0)}%`;
+
+        // Limit box to object size
+        const boxWidth = Math.min(w, canvas.width - x);
+        const boxHeight = Math.min(h, canvas.height - y);
 
         ctx.strokeStyle = "#00ff00";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(x, y, w, h);
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, boxWidth, boxHeight);
 
         ctx.fillStyle = "#00ff00";
         ctx.font = "18px Arial";
-        ctx.fillText(label, x, y > 20 ? y - 5 : y + 20);
+        ctx.fillText(p.class, x, y > 20 ? y - 5 : y + 20);
 
-        speak(`${p.class} detected with ${(p.score * 100).toFixed(0)} percent confidence`);
+        speakObject(p.class);
       });
   }
 
@@ -138,4 +138,5 @@
 </script>
 </body>
 </html>
+
 

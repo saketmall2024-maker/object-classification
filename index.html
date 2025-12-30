@@ -3,23 +3,20 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Object Detection Mobile</title>
+<title>Object Detection</title>
 <style>
   body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
   #video, #canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
-  #toggleCamBtn { position: absolute; top: 10px; left: 10px; z-index: 10; padding: 10px 15px; font-size: 16px; }
 </style>
 </head>
 <body>
 
-<button id="toggleCamBtn">Toggle Camera</button>
 <video id="video" autoplay playsinline muted></video>
 <canvas id="canvas"></canvas>
 
 <script type="module">
 import * as mp from 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.0';
 
-// Initialize object detector
 const vision = mp.ObjectDetector.createFromOptions({
   modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detection/ssd_mobilenetv2/fp16/1/ssd_mobilenetv2.tflite',
   runningMode: 'VIDEO',
@@ -30,32 +27,17 @@ const vision = mp.ObjectDetector.createFromOptions({
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const toggleBtn = document.getElementById('toggleCamBtn');
 
-let currentFacingMode = "user"; // front camera
 let lastDetected = "";
 
-// Start camera
 async function startCamera() {
-  if (video.srcObject) {
-    video.srcObject.getTracks().forEach(track => track.stop());
-  }
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: currentFacingMode }
-  });
+  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
   video.srcObject = stream;
   await video.play();
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
 }
 
-// Toggle camera
-toggleBtn.addEventListener('click', async () => {
-  currentFacingMode = (currentFacingMode === "user") ? "environment" : "user";
-  await startCamera();
-});
-
-// Detection loop
 async function detectLoop() {
   if (video.readyState < 2) {
     requestAnimationFrame(detectLoop);
@@ -71,7 +53,7 @@ async function detectLoop() {
     const label = det.categories[0].categoryName;
     const box = det.boundingBox;
 
-    // Centered smaller bounding box
+    // Smaller centered bounding box
     const boxWidth = box.width * canvas.width * 0.6;
     const boxHeight = box.height * canvas.height * 0.6;
     const centerX = box.xCenter * canvas.width - boxWidth / 2;
@@ -85,22 +67,24 @@ async function detectLoop() {
     ctx.font = '24px Arial';
     ctx.fillText(label, centerX, centerY - 10);
 
-    // Text to speech if object changed
+    // Speak only if object changed
     if (label !== lastDetected) {
       lastDetected = label;
       const utter = new SpeechSynthesisUtterance(label);
       speechSynthesis.speak(utter);
     }
   } else {
-    lastDetected = ""; // reset when nothing detected
+    lastDetected = "";
   }
 
   requestAnimationFrame(detectLoop);
 }
 
-// Initialize
+// Start
 startCamera().then(() => detectLoop());
 </script>
+
 </body>
 </html>
+
 

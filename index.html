@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live Object Detection</title>
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0"></script>
+
+  <!-- COCO-SSD Model -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    #container {
+      position: relative;
+    }
+
+    video {
+      width: 640px;
+      height: 480px;
+      border-radius: 10px;
+    }
+
+    canvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+  </style>
+</head>
+<body>
+
+<div id="container">
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas"></canvas>
+</div>
+
+<script>
+  const video = document.getElementById("video");
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+
+  let model;
+
+  async function setupCamera() {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment" },
+      audio: false
+    });
+    video.srcObject = stream;
+
+    return new Promise(resolve => {
+      video.onloadedmetadata = () => resolve(video);
+    });
+  }
+
+  async function loadModel() {
+    model = await cocoSsd.load();
+    console.log("Model loaded");
+  }
+
+  function drawPrediction(prediction) {
+    const [x, y, width, height] = prediction.bbox;
+
+    ctx.strokeStyle = "lime";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x, y, width, height);
+
+    ctx.fillStyle = "lime";
+    ctx.font = "16px Arial";
+    ctx.fillText(
+      `${prediction.class} (${Math.round(prediction.score * 100)}%)`,
+      x,
+      y > 10 ? y - 5 : 10
+    );
+  }
+
+  async function detectObjects() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    const predictions = await model.detect(video);
+
+    predictions.forEach(drawPrediction);
+
+    requestAnimationFrame(detectObjects);
+  }
+
+  async function start() {
+    await setupCamera();
+    await loadModel();
+    detectObjects();
+  }
+
+  start();
+</script>
+
+</body>
+</html>

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Object Detection – Full Screen</title>
+<title>Object Detection – Small Centered Boxes</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.14.0"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
@@ -46,7 +46,6 @@ function resizeCanvas() {
 }
 
 function speakObjects(objects) {
-  // Filter objects that were not spoken in previous frame
   const newObjects = objects.filter(obj => !lastObjectsSpoken.has(obj));
   if(newObjects.length > 0){
     newObjects.forEach(obj => {
@@ -68,16 +67,21 @@ function draw(predictions) {
     .filter(p => p.score > 0.5)
     .forEach(p => {
       const [x, y, w, h] = p.bbox;
-      const boxWidth = Math.min(w, canvas.width - x);
-      const boxHeight = Math.min(h, canvas.height - y);
+
+      // Make the bounding box smaller and center it
+      const scale = 0.5; // 50% smaller than original
+      const boxWidth = w * scale;
+      const boxHeight = h * scale;
+      const boxX = x + (w - boxWidth)/2;
+      const boxY = y + (h - boxHeight)/2;
 
       ctx.strokeStyle = "#00ff00";
       ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, boxWidth, boxHeight);
+      ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
 
       ctx.fillStyle = "#00ff00";
       ctx.font = "18px Arial";
-      ctx.fillText(p.class, x, y > 20 ? y - 5 : y + 20);
+      ctx.fillText(p.class, boxX, boxY > 20 ? boxY - 5 : boxY + 20);
 
       currentObjects.push(p.class);
     });
@@ -104,6 +108,7 @@ start();
 </script>
 </body>
 </html>
+
 
 
 
